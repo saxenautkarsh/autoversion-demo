@@ -1,0 +1,47 @@
+on:
+  push:
+    # Sequence of patterns matched against refs/tags
+    branches:
+      - 'master'
+
+name: Create Release
+
+jobs:
+  CreateRelease:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        id: checkout_code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Prepare Release
+        id: prepare_release
+        run: |
+          version=$(git diff HEAD^..HEAD -- version.go | grep '+.*version' | sed 's/[^0-9|.]//g' | grep '[0-9]'|| true)
+          git describe --tags --abbrev=0 @
+          body=$(git log  $(git describe --tags --abbrev=0 @)..@ | grep 'Merge pull request' | awk -v ORS=' %0A'  '{ print $0 }' || true )
+          echo "New Version: $version"
+          echo "Release Body: $body"
+          echo "::set-output name=body::$body"
+          echo "::set-output name=version::$version"
+      - name: Check environment var
+        id: check_environment_var
+        run: |
+          echo "New Version: ${{ steps.prepare_release.outputs.version }}"
+          echo "Release Body: ${{ steps.prepare_release.outputs.body }}"
+      - name: Create Release
+        id: create_release
+        if: ${{ steps.prepare_release.outputs.version!='' }}
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name:  v${{ steps.prepare_release.outputs.version }}
+          release_name: Release v${{ steps.prepare_release.outputs.version }}
+          body: |
+            ${{ steps.prepare_release.outputs.body }}
+          draft: false
+          prerelease: false
+
